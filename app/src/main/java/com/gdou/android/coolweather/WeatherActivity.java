@@ -4,11 +4,15 @@ import android.content.SharedPreferences;
 import android.graphics.Color;
 import android.os.Build;
 import android.preference.PreferenceManager;
+import android.support.v4.view.GravityCompat;
+import android.support.v4.widget.DrawerLayout;
+import android.support.v4.widget.SwipeRefreshLayout;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
+import android.widget.Button;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
@@ -42,23 +46,31 @@ public class WeatherActivity extends AppCompatActivity {
     private TextView sportText;
     private ImageView bingPicImg;
 
+    // 下拉刷新
+    public SwipeRefreshLayout swipeRefreshLayout;
+    private String mWeatherId;
+
+    // 左侧滑动菜单
+    public DrawerLayout drawerLayout;
+    public Button navButton;
+
     private static final String TAG = "WeatherActivity";
     
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         // 将背景图和状态栏融合到一起, 该功能在android 5.0及以上的系统才支持
-        if (Build.VERSION.SDK_INT >= 21) {
+        /*if (Build.VERSION.SDK_INT >= 21) {
             // 拿到当前活动的DecorView
             View decorView = getWindow().getDecorView();
             // 改变系统UI的显示
             // View.SYSTEM_UI_FLAG_layout_fullscreen和View_UI_FLAG_LAYOUT_STABLE表示活动的布局会显示在状态栏上面
             decorView.setSystemUiVisibility(View.SYSTEM_UI_FLAG_FULLSCREEN | View.SYSTEM_UI_FLAG_LAYOUT_STABLE);
             // 最后设置将状态栏设置成透明色
-            getWindow().setStatusBarColor(Color.rgb(0,0,0));
+            getWindow().setStatusBarColor(Color.GRAY);
             // 此时系统蓝会成为我们布局的一部分， 没有单独为它留出空间
             // 因此我们仍然需要设置一下android:fitsSystemWindows属性
-        }
+        }*/
         setContentView(R.layout.activity_weather);
 
         // 初始化各种空间
@@ -76,6 +88,13 @@ public class WeatherActivity extends AppCompatActivity {
 
         bingPicImg = findViewById(R.id.bing_pic_img);
 
+        swipeRefreshLayout = findViewById(R.id.swipe_refresh);
+        swipeRefreshLayout.setColorSchemeResources(R.color.colorPrimary);
+
+        drawerLayout = findViewById(R.id.drawer_layout);
+        navButton = findViewById(R.id.nav_button);
+
+        // 实现自动刷新
         SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(this);
         String weatherString = prefs.getString("weather", null);
 
@@ -91,14 +110,32 @@ public class WeatherActivity extends AppCompatActivity {
         if (weatherString != null) {
             // 有缓存时直接解析天气数据
             Weather weather = Utility.handleWeatherResponse(weatherString);
+            // 实现自动刷新
+            mWeatherId = weather.basic.weatherId;
             ShowWeatherInfo(weather);
+
         } else {
             // 无缓存时，去服务器查询天气
-            String weatherId = getIntent().getStringExtra("weather_id");
+            mWeatherId = getIntent().getStringExtra("weather_id");
             // 注意， 在请求数据时先将ScrollView进行隐藏， 不然空数据的界面看上去会很奇怪
             weatherLayout.setVisibility(View.INVISIBLE);
-            requestWeather(weatherId);
+            requestWeather(mWeatherId);
         }
+
+        swipeRefreshLayout.setOnRefreshListener(new SwipeRefreshLayout.OnRefreshListener() {
+            @Override
+            public void onRefresh() {
+                requestWeather(mWeatherId);
+            }
+        });
+
+        navButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                // 打开菜单方式：从start方向打开， 和xml文件中设置一致
+                drawerLayout.openDrawer(GravityCompat.START);
+            }
+        });
 
     }
 
@@ -130,7 +167,7 @@ public class WeatherActivity extends AppCompatActivity {
     }
 
     // 根据天气id请求城市天气信息
-    private void requestWeather(String weatherId) {
+    public void requestWeather(String weatherId) {
 
         String weatherUrl = "http://guolin.tech/api/weather?cityid=" + weatherId + "&key=9347e1f2ea2648e3825bf7addea2cce5";
         Log.d(TAG, "requestWeather: " + weatherUrl);
@@ -150,10 +187,12 @@ public class WeatherActivity extends AppCompatActivity {
                             SharedPreferences.Editor editor = PreferenceManager.getDefaultSharedPreferences(WeatherActivity.this).edit();
                             editor.putString("weather", responseText);
                             editor.apply();
+                            mWeatherId = weather.basic.weatherId;
                             ShowWeatherInfo(weather);
                         } else {
                             Toast.makeText(WeatherActivity.this, "获取天气信息失败", Toast.LENGTH_SHORT).show();
                         }
+                        swipeRefreshLayout.setRefreshing(false);
                     }
                 });
             }
@@ -164,6 +203,7 @@ public class WeatherActivity extends AppCompatActivity {
                     @Override
                     public void run() {
                         Toast.makeText(WeatherActivity.this, "获取天气信息失败", Toast.LENGTH_SHORT).show();
+                        swipeRefreshLayout.setRefreshing(false);
                     }
                 });
             }
